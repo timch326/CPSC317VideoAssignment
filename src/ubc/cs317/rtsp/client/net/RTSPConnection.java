@@ -13,6 +13,14 @@
 
 package ubc.cs317.rtsp.client.net;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.DatagramSocket;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -31,7 +39,10 @@ public class RTSPConnection {
 	private Session session;
 	private Timer rtpTimer;
 
+
 	// TODO Add additional fields, if necessary
+	private Socket tcpSocket;
+	private DatagramSocket rtpSocket; 
 	
 	/**
 	 * Establishes a new connection with an RTSP server. No message is sent at
@@ -49,9 +60,14 @@ public class RTSPConnection {
 	 */
 	public RTSPConnection(Session session, String server, int port)
 			throws RTSPException {
-
 		this.session = session;
-
+		try {
+			tcpSocket = new Socket(server, port);
+		} catch (UnknownHostException e) {
+			throw new RTSPException("Could not connect to host", e);
+		} catch (IOException e) {
+			throw new RTSPException("Malformed input to client", e );
+		}
 		// TODO
 	}
 
@@ -73,7 +89,29 @@ public class RTSPConnection {
 	 *             not return a successful response.
 	 */
 	public synchronized void setup(String videoName) throws RTSPException {
+		BufferedWriter dawrite;
+		BufferedReader daread;
+		try {
+			rtpSocket = new DatagramSocket();
+			int udpPort = rtpSocket.getLocalPort();
 
+			dawrite = new BufferedWriter(new PrintWriter(tcpSocket.getOutputStream()));
+			daread = new BufferedReader(new InputStreamReader(tcpSocket.getInputStream()));
+
+			String req = "";
+			req = req.concat("SETUP " + videoName + " RTSP/1.0\r\n");
+			req = req.concat("CSeq: 1\r\n");
+			req = req.concat("Transport: RTP/UDP; client_port=" + udpPort + "\r\n");
+			req = req.concat("\r\n");
+			System.out.println(req);
+			dawrite.write(req);
+			dawrite.flush();
+
+			RTSPResponse derp = RTSPResponse.readRTSPResponse(daread);
+			System.out.println(derp.getResponseCode());
+		} catch (IOException e) {
+			throw new RTSPException("Could not get input/output stream", e);
+		}
 		// TODO
 	}
 
