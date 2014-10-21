@@ -249,10 +249,17 @@ public class RTSPConnection {
 	 * @return A Frame object.
 	 */
 	private static Frame parseRTPPacket(byte[] packet, int length) {
-		
-		System.out.println("Derp");
 
-		// TODO
+		byte payloadType = (byte) (packet[1] & 0x7F);
+		boolean marker;
+		short sequenceNumber;
+		int timestamp;
+		byte[] payload;
+		int offset;
+		int payloadLength;
+
+		System.out.println(payloadType);
+
 		return null; // Replace with a proper Frame
 	}
 }
