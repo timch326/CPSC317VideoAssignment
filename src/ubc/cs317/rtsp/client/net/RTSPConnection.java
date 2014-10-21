@@ -18,6 +18,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -26,6 +27,7 @@ import java.util.TimerTask;
 
 import ubc.cs317.rtsp.client.exception.RTSPException;
 import ubc.cs317.rtsp.client.model.Frame;
+import ubc.cs317.rtsp.client.model.RTPHeader;
 import ubc.cs317.rtsp.client.model.Session;
 
 /**
@@ -42,7 +44,12 @@ public class RTSPConnection {
 
 	// TODO Add additional fields, if necessary
 	private Socket tcpSocket;
-	private DatagramSocket rtpSocket; 
+	private DatagramSocket rtpSocket;
+	private int cSeq = 1;
+	
+	private BufferedWriter rtspWriter;
+	private BufferedReader rtspReader;
+	private String sessionNumber;
 	
 	/**
 	 * Establishes a new connection with an RTSP server. No message is sent at
@@ -63,6 +70,8 @@ public class RTSPConnection {
 		this.session = session;
 		try {
 			tcpSocket = new Socket(server, port);
+			rtspWriter = new BufferedWriter(new PrintWriter(tcpSocket.getOutputStream()));
+			rtspReader = new BufferedReader(new InputStreamReader(tcpSocket.getInputStream()));
 		} catch (UnknownHostException e) {
 			throw new RTSPException("Could not connect to host", e);
 		} catch (IOException e) {
@@ -89,30 +98,30 @@ public class RTSPConnection {
 	 *             not return a successful response.
 	 */
 	public synchronized void setup(String videoName) throws RTSPException {
-		BufferedWriter dawrite;
-		BufferedReader daread;
 		try {
 			rtpSocket = new DatagramSocket();
-			int udpPort = rtpSocket.getLocalPort();
+			int rtpPort = rtpSocket.getLocalPort();
 
-			dawrite = new BufferedWriter(new PrintWriter(tcpSocket.getOutputStream()));
-			daread = new BufferedReader(new InputStreamReader(tcpSocket.getInputStream()));
+			cSeq = 1;
 
 			String req = "";
 			req = req.concat("SETUP " + videoName + " RTSP/1.0\r\n");
-			req = req.concat("CSeq: 1\r\n");
-			req = req.concat("Transport: RTP/UDP; client_port=" + udpPort + "\r\n");
+			req = req.concat("CSeq: " + cSeq + "\r\n");
+			req = req.concat("Transport: RTP/UDP; client_port=" + rtpPort + "\r\n");
 			req = req.concat("\r\n");
 			System.out.println(req);
-			dawrite.write(req);
-			dawrite.flush();
+			rtspWriter.write(req);
+			rtspWriter.flush();
+			
+			RTSPResponse setupResponse = RTSPResponse.readRTSPResponse(rtspReader);
+			sessionNumber = setupResponse.getHeaderValue("Session");
+			System.out.println(setupResponse.getResponseCode());
+			System.out.println(sessionNumber);
+			cSeq++;
 
-			RTSPResponse derp = RTSPResponse.readRTSPResponse(daread);
-			System.out.println(derp.getResponseCode());
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
 		}
-		// TODO
 	}
 
 	/**
@@ -126,8 +135,26 @@ public class RTSPConnection {
 	 *             if the server did not return a successful response.
 	 */
 	public synchronized void play() throws RTSPException {
+		try {
+			
+			String req = "";
+			req = req.concat("PLAY " + session.getVideoName() + " RTSP/1.0\r\n");
+			req = req.concat("CSeq: " + cSeq + "\r\n");
+			req = req.concat("Session: " + sessionNumber + "\r\n");
+			req = req.concat("\r\n");
+			System.out.println(req);
+			rtspWriter.write(req);
+			rtspWriter.flush();
+			
+			RTSPResponse playResponse = RTSPResponse.readRTSPResponse(rtspReader);
+			System.out.println(playResponse.getResponseCode());
+			cSeq++;
+			
+			startRTPTimer();
 
-		// TODO
+		} catch (IOException e) {
+			throw new RTSPException("Could not get input/output stream", e);
+		}
 	}
 
 	/**
@@ -156,6 +183,18 @@ public class RTSPConnection {
 	 */
 	private void receiveRTPPacket() {
 
+		byte[] buffer = new byte[BUFFER_LENGTH];
+		DatagramPacket rtpPacket = new DatagramPacket(buffer, BUFFER_LENGTH);
+		try {
+			rtpSocket.receive(rtpPacket);
+			byte[] rtpHeaderData = rtpPacket.getData();
+			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
+			session.processReceivedFrame(frame);
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
 		// TODO
 	}
 
@@ -210,6 +249,8 @@ public class RTSPConnection {
 	 * @return A Frame object.
 	 */
 	private static Frame parseRTPPacket(byte[] packet, int length) {
+		
+		System.out.println("Derp");
 
 		// TODO
 		return null; // Replace with a proper Frame
