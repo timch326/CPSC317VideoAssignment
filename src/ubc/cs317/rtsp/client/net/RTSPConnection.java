@@ -22,12 +22,12 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 
 import ubc.cs317.rtsp.client.exception.RTSPException;
 import ubc.cs317.rtsp.client.model.Frame;
-import ubc.cs317.rtsp.client.model.RTPHeader;
 import ubc.cs317.rtsp.client.model.Session;
 
 /**
@@ -35,22 +35,22 @@ import ubc.cs317.rtsp.client.model.Session;
  */
 public class RTSPConnection {
 
+	private static final int RTP_HEADER_LENGTH = 12;
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
 
 	private Session session;
 	private Timer rtpTimer;
 
-
 	// TODO Add additional fields, if necessary
 	private Socket tcpSocket;
 	private DatagramSocket rtpSocket;
 	private int cSeq = 1;
-	
+
 	private BufferedWriter rtspWriter;
 	private BufferedReader rtspReader;
 	private String sessionNumber;
-	
+
 	/**
 	 * Establishes a new connection with an RTSP server. No message is sent at
 	 * this point, and no stream is set up.
@@ -70,12 +70,14 @@ public class RTSPConnection {
 		this.session = session;
 		try {
 			tcpSocket = new Socket(server, port);
-			rtspWriter = new BufferedWriter(new PrintWriter(tcpSocket.getOutputStream()));
-			rtspReader = new BufferedReader(new InputStreamReader(tcpSocket.getInputStream()));
+			rtspWriter = new BufferedWriter(new PrintWriter(
+					tcpSocket.getOutputStream()));
+			rtspReader = new BufferedReader(new InputStreamReader(
+					tcpSocket.getInputStream()));
 		} catch (UnknownHostException e) {
 			throw new RTSPException("Could not connect to host", e);
 		} catch (IOException e) {
-			throw new RTSPException("Malformed input to client", e );
+			throw new RTSPException("Malformed input to client", e);
 		}
 		// TODO
 	}
@@ -107,13 +109,15 @@ public class RTSPConnection {
 			String req = "";
 			req = req.concat("SETUP " + videoName + " RTSP/1.0\r\n");
 			req = req.concat("CSeq: " + cSeq + "\r\n");
-			req = req.concat("Transport: RTP/UDP; client_port=" + rtpPort + "\r\n");
+			req = req.concat("Transport: RTP/UDP; client_port=" + rtpPort
+					+ "\r\n");
 			req = req.concat("\r\n");
 			System.out.println(req);
 			rtspWriter.write(req);
 			rtspWriter.flush();
-			
-			RTSPResponse setupResponse = RTSPResponse.readRTSPResponse(rtspReader);
+
+			RTSPResponse setupResponse = RTSPResponse
+					.readRTSPResponse(rtspReader);
 			sessionNumber = setupResponse.getHeaderValue("Session");
 			System.out.println(setupResponse.getResponseCode());
 			System.out.println(sessionNumber);
@@ -136,20 +140,22 @@ public class RTSPConnection {
 	 */
 	public synchronized void play() throws RTSPException {
 		try {
-			
+
 			String req = "";
-			req = req.concat("PLAY " + session.getVideoName() + " RTSP/1.0\r\n");
+			req = req
+					.concat("PLAY " + session.getVideoName() + " RTSP/1.0\r\n");
 			req = req.concat("CSeq: " + cSeq + "\r\n");
 			req = req.concat("Session: " + sessionNumber + "\r\n");
 			req = req.concat("\r\n");
 			System.out.println(req);
 			rtspWriter.write(req);
 			rtspWriter.flush();
-			
-			RTSPResponse playResponse = RTSPResponse.readRTSPResponse(rtspReader);
+
+			RTSPResponse playResponse = RTSPResponse
+					.readRTSPResponse(rtspReader);
 			System.out.println(playResponse.getResponseCode());
 			cSeq++;
-			
+
 			startRTPTimer();
 
 		} catch (IOException e) {
@@ -190,12 +196,11 @@ public class RTSPConnection {
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
 			session.processReceivedFrame(frame);
-			
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		
-		// TODO
+
 	}
 
 	/**
@@ -210,7 +215,29 @@ public class RTSPConnection {
 	 */
 	public synchronized void pause() throws RTSPException {
 
-		// TODO
+		try {
+
+			String req = "";
+			req = req.concat("PAUSE " + session.getVideoName()
+					+ " RTSP/1.0\r\n");
+			req = req.concat("CSeq: " + cSeq + "\r\n");
+			req = req.concat("Session: " + sessionNumber + "\r\n");
+			req = req.concat("\r\n");
+			System.out.println(req);
+			rtspWriter.write(req);
+			rtspWriter.flush();
+
+			RTSPResponse playResponse = RTSPResponse
+					.readRTSPResponse(rtspReader);
+			System.out.println(playResponse.getResponseCode());
+			cSeq++;
+
+			startRTPTimer();
+
+		} catch (IOException e) {
+			throw new RTSPException("Could not get input/output stream", e);
+		}
+
 	}
 
 	/**
@@ -228,7 +255,30 @@ public class RTSPConnection {
 	 */
 	public synchronized void teardown() throws RTSPException {
 
-		// TODO
+		try {
+
+			String req = "";
+			req = req.concat("TEARDOWN " + session.getVideoName()
+					+ " RTSP/1.0\r\n");
+			req = req.concat("CSeq: " + cSeq + "\r\n");
+			req = req.concat("Session: " + sessionNumber + "\r\n");
+			req = req.concat("\r\n");
+			System.out.println(req);
+			rtspWriter.write(req);
+			rtspWriter.flush();
+
+			RTSPResponse playResponse = RTSPResponse
+					.readRTSPResponse(rtspReader);
+			System.out.println(playResponse.getResponseCode());
+			cSeq++;
+
+			startRTPTimer();
+
+		} catch (IOException e) {
+			throw new RTSPException("Could not get input/output stream", e);
+		}
+		
+		rtpSocket.close();
 	}
 
 	/**
@@ -237,7 +287,12 @@ public class RTSPConnection {
 	 * connection, if it is still open.
 	 */
 	public synchronized void closeConnection() {
-		// TODO
+		try {
+			session.close();
+			rtpSocket.close();
+		} catch (RTSPException e) {
+			e.printStackTrace();
+		}
 	}
 
 	/**
@@ -251,15 +306,19 @@ public class RTSPConnection {
 	private static Frame parseRTPPacket(byte[] packet, int length) {
 
 		byte payloadType = (byte) (packet[1] & 0x7F);
-		boolean marker;
-		short sequenceNumber;
-		int timestamp;
-		byte[] payload;
-		int offset;
-		int payloadLength;
+		boolean marker = (packet[1] & 0x80) == 1 ? true : false;
+		short sequenceNumber = (short) ((packet[2] << 8) + packet[3]);
+		int timestamp = packet[4] << 24 + packet[5] << 16 + packet[6] << 8 + packet[7];
+		byte[] payload = Arrays.copyOfRange(packet, RTP_HEADER_LENGTH,
+				BUFFER_LENGTH);
 
-		System.out.println(payloadType);
+		System.out.println("Payload Type: " + payloadType);
+		System.out.println("Marker: " + marker);
+		System.out.println("Sequence No: " + sequenceNumber);
+		System.out.println("Tiemstamp: " + timestamp);
 
-		return null; // Replace with a proper Frame
+		return new Frame(payloadType, marker, sequenceNumber, timestamp,
+				payload);
+
 	}
 }
