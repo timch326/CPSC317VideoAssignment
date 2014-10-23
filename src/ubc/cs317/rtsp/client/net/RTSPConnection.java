@@ -35,6 +35,7 @@ import ubc.cs317.rtsp.client.model.Session;
  */
 public class RTSPConnection {
 
+	private static final int RTP_TIMEOUT = 1000;
 	private static final int RTP_HEADER_LENGTH = 12;
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
@@ -42,7 +43,6 @@ public class RTSPConnection {
 	private Session session;
 	private Timer rtpTimer;
 
-	// TODO Add additional fields, if necessary
 	private Socket tcpSocket;
 	private DatagramSocket rtpSocket;
 	private int cSeq = 1;
@@ -79,7 +79,6 @@ public class RTSPConnection {
 		} catch (IOException e) {
 			throw new RTSPException("Malformed input to client", e);
 		}
-		// TODO
 	}
 
 	/**
@@ -102,31 +101,29 @@ public class RTSPConnection {
 	public synchronized void setup(String videoName) throws RTSPException {
 		try {
 			rtpSocket = new DatagramSocket();
+			rtpSocket.setSoTimeout(RTP_TIMEOUT);
 			int rtpPort = rtpSocket.getLocalPort();
-
 			cSeq = 1;
 
-			String req = "";
-			req = req.concat("SETUP " + videoName + " RTSP/1.0\r\n");
-			req = req.concat("CSeq: " + cSeq + "\r\n");
-			req = req.concat("Transport: RTP/UDP; client_port=" + rtpPort
-					+ "\r\n");
-			req = req.concat("\r\n");
-			System.out.println(req);
-			rtspWriter.write(req);
-			rtspWriter.flush();
-
+			new RTSPRequest("SETUP", videoName)
+					.setCSeq(cSeq)
+					.setRtpPort(rtpPort)
+					.sendRequest(rtspWriter);
 			RTSPResponse setupResponse = RTSPResponse
 					.readRTSPResponse(rtspReader);
-			sessionNumber = setupResponse.getHeaderValue("Session");
-			System.out.println(setupResponse.getResponseCode());
+			
 			System.out.println(sessionNumber);
+
+			checkSuccessfulResponse(setupResponse);
+			sessionNumber = setupResponse.getHeaderValue("Session");
 			cSeq++;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
 		}
 	}
+
+
 
 	/**
 	 * Sends a PLAY request to the server. This method is responsible for
@@ -141,21 +138,17 @@ public class RTSPConnection {
 	public synchronized void play() throws RTSPException {
 		try {
 
-			String req = "";
-			req = req
-					.concat("PLAY " + session.getVideoName() + " RTSP/1.0\r\n");
-			req = req.concat("CSeq: " + cSeq + "\r\n");
-			req = req.concat("Session: " + sessionNumber + "\r\n");
-			req = req.concat("\r\n");
-			System.out.println(req);
-			rtspWriter.write(req);
-			rtspWriter.flush();
-
+			new RTSPRequest("PLAY", session.getVideoName())
+				.setCSeq(cSeq)
+				.setSession(sessionNumber)
+				.sendRequest(rtspWriter);
+			
 			RTSPResponse playResponse = RTSPResponse
 					.readRTSPResponse(rtspReader);
-			System.out.println(playResponse.getResponseCode());
-			cSeq++;
 
+			checkSuccessfulResponse(playResponse);
+			
+			cSeq++;
 			startRTPTimer();
 
 		} catch (IOException e) {
@@ -217,22 +210,17 @@ public class RTSPConnection {
 
 		try {
 
-			String req = "";
-			req = req.concat("PAUSE " + session.getVideoName()
-					+ " RTSP/1.0\r\n");
-			req = req.concat("CSeq: " + cSeq + "\r\n");
-			req = req.concat("Session: " + sessionNumber + "\r\n");
-			req = req.concat("\r\n");
-			System.out.println(req);
-			rtspWriter.write(req);
-			rtspWriter.flush();
+			new RTSPRequest("PAUSE", session.getVideoName())
+				.setCSeq(cSeq)
+				.setSession(sessionNumber)
+				.sendRequest(rtspWriter);
 
-			RTSPResponse playResponse = RTSPResponse
+			RTSPResponse pauseResponse = RTSPResponse
 					.readRTSPResponse(rtspReader);
-			System.out.println(playResponse.getResponseCode());
+						
+			checkSuccessfulResponse(pauseResponse);
 			cSeq++;
-
-			startRTPTimer();
+			rtpTimer.cancel();
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
@@ -257,27 +245,23 @@ public class RTSPConnection {
 
 		try {
 
-			String req = "";
-			req = req.concat("TEARDOWN " + session.getVideoName()
-					+ " RTSP/1.0\r\n");
-			req = req.concat("CSeq: " + cSeq + "\r\n");
-			req = req.concat("Session: " + sessionNumber + "\r\n");
-			req = req.concat("\r\n");
-			System.out.println(req);
-			rtspWriter.write(req);
-			rtspWriter.flush();
 
-			RTSPResponse playResponse = RTSPResponse
+			new RTSPRequest("TEARDOWN", session.getVideoName())
+				.setCSeq(cSeq)
+				.setSession(sessionNumber)
+				.sendRequest(rtspWriter);
+
+			RTSPResponse teardownResponse = RTSPResponse
 					.readRTSPResponse(rtspReader);
-			System.out.println(playResponse.getResponseCode());
+			
+			checkSuccessfulResponse(teardownResponse);
+			rtpTimer.cancel();
 			cSeq++;
-
-			startRTPTimer();
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
 		}
-		
+
 		rtpSocket.close();
 	}
 
@@ -288,11 +272,14 @@ public class RTSPConnection {
 	 */
 	public synchronized void closeConnection() {
 		try {
-			session.close();
+			rtpTimer.cancel();
 			rtpSocket.close();
-		} catch (RTSPException e) {
+			tcpSocket.close();
+
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
+
 	}
 
 	/**
@@ -320,5 +307,17 @@ public class RTSPConnection {
 		return new Frame(payloadType, marker, sequenceNumber, timestamp,
 				payload);
 
+	}
+	
+	private void checkSuccessfulResponse(RTSPResponse response)
+			throws RTSPException {
+		
+		System.out.println(response.getResponseCode());
+
+		if (response.getResponseCode() != 200) {
+			throw new RTSPException(
+					"Server did not return a successful response, got: "
+							+ response.getResponseCode());
+		}
 	}
 }
