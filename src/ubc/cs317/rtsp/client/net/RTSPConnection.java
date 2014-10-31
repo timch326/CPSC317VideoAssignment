@@ -21,7 +21,9 @@ import java.io.PrintWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -189,7 +191,9 @@ public class RTSPConnection {
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
 			session.processReceivedFrame(frame);
-
+		} catch (SocketTimeoutException e) {
+			//TODO Possibly handle the end of the stream better 
+			this.closeConnection();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -292,17 +296,19 @@ public class RTSPConnection {
 	 */
 	private static Frame parseRTPPacket(byte[] packet, int length) {
 
+		ByteBuffer wrap = ByteBuffer.wrap(packet);
+		
 		byte payloadType = (byte) (packet[1] & 0x7F);
 		boolean marker = (packet[1] & 0x80) == 1 ? true : false;
-		short sequenceNumber = (short) ((packet[2] << 8) + packet[3]);
-		int timestamp = packet[4] << 24 + packet[5] << 16 + packet[6] << 8 + packet[7];
+		short sequenceNumber = wrap.getShort(2);
+		int timestamp = wrap.getInt(4);
 		byte[] payload = Arrays.copyOfRange(packet, RTP_HEADER_LENGTH,
 				BUFFER_LENGTH);
 
 		System.out.println("Payload Type: " + payloadType);
 		System.out.println("Marker: " + marker);
 		System.out.println("Sequence No: " + sequenceNumber);
-		System.out.println("Tiemstamp: " + timestamp);
+		System.out.println("Timestamp: " + timestamp);
 
 		return new Frame(payloadType, marker, sequenceNumber, timestamp,
 				payload);
