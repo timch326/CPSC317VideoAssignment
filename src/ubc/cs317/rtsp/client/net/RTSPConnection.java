@@ -193,7 +193,7 @@ public class RTSPConnection {
 			session.processReceivedFrame(frame);
 		} catch (SocketTimeoutException e) {
 			//TODO Possibly handle the end of the stream better 
-			this.closeConnection();
+			rtpTimer.cancel();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -259,14 +259,15 @@ public class RTSPConnection {
 					.readRTSPResponse(rtspReader);
 			
 			checkSuccessfulResponse(teardownResponse);
+			
 			rtpTimer.cancel();
+			rtpSocket.close();
 			cSeq++;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
 		}
 
-		rtpSocket.close();
 	}
 
 	/**
