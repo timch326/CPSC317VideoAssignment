@@ -65,6 +65,7 @@ public class RTSPConnection {
 	private Date timeStart; 
 	private long frameCount = 0; 
 	private long outOfOrderCount = 0; 
+	private long lostFrameCount = 0;
 	private int lastSequenceNo = 0;
 	
 	private short lastPlayedFrameSeqNum = -1; 
@@ -249,7 +250,7 @@ public class RTSPConnection {
 					else if( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp > timeWaitDelta ) {
 						return;
 					}
-					//We have waited too long and it's not a delta 1 away, just play the next frame
+					//We have waited too long and the next sequence is greater by one, just play the next frame
 					else if ( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp <= timeWaitDelta ) {
 						System.out.printf("Time since starting %d\n", System.currentTimeMillis() - timeStart.getTime());
 						System.out.printf("Timestamp %d\n", frameBuffer.first().getTimestamp());
@@ -261,6 +262,7 @@ public class RTSPConnection {
 						lastPlayedFrameTimeStamp = currentTimeStamp;
 
 						frameBuffer.remove(frameBuffer.first()); 
+						lostFrameCount++;
 					} 
 				}
 			}
@@ -297,8 +299,10 @@ public class RTSPConnection {
 			double secondsElapsed = (new Date().getTime() - timeStart.getTime()) / 1000.0;
 			double framesPerSec = frameCount / secondsElapsed;
 			double outOfOrderPerSec = outOfOrderCount / secondsElapsed; 
+			double lostFramesPerSec = lostFrameCount / secondsElapsed; 
 			System.out.println("The frame count per a second is " + framesPerSec);
 			System.out.println("The out of order count per a second is " + outOfOrderPerSec);
+			System.out.println("The lost packets per a second is " + lostFramesPerSec);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
