@@ -25,8 +25,10 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeSet;
 
 import ubc.cs317.rtsp.client.exception.RTSPException;
 import ubc.cs317.rtsp.client.model.Frame;
@@ -41,6 +43,7 @@ public class RTSPConnection {
 	private static final int RTP_HEADER_LENGTH = 12;
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
+	private static final long TARGET_FRAMERATE = 20;
 
 	private Session session;
 	private Timer rtpTimer;
@@ -48,6 +51,17 @@ public class RTSPConnection {
 	private Socket tcpSocket;
 	private DatagramSocket rtpSocket;
 	private int cSeq = 1;
+	
+	private int BUFFER_SIZE; 
+	private TreeSet<Frame> frameBuffer = new TreeSet<Frame>(); 
+	
+	//Statistical constants
+	private Date timeStart; 
+	private long frameCount = 0; 
+	private long outOfOrderCount = 0; 
+	private int lastSequenceNo = 0;
+	
+	private int lastPlayedFrame = -1; 
 
 	private BufferedWriter rtspWriter;
 	private BufferedReader rtspReader;
@@ -125,8 +139,6 @@ public class RTSPConnection {
 		}
 	}
 
-
-
 	/**
 	 * Sends a PLAY request to the server. This method is responsible for
 	 * sending the request, receiving the response and, in case of a successful
@@ -151,6 +163,8 @@ public class RTSPConnection {
 			checkSuccessfulResponse(playResponse);
 			
 			cSeq++;
+			System.out.println("Payload Type,Marker,Sequence#,Timestamp\n");
+			timeStart = new Date();
 			startRTPTimer();
 
 		} catch (IOException e) {
@@ -164,7 +178,6 @@ public class RTSPConnection {
 	 * next one.
 	 */
 	private void startRTPTimer() {
-
 		rtpTimer = new Timer();
 		rtpTimer.schedule(new TimerTask() {
 			@Override
@@ -172,6 +185,23 @@ public class RTSPConnection {
 				receiveRTPPacket();
 			}
 		}, 0, MINIMUM_DELAY_READ_PACKETS_MS);
+
+		rtpTimer.schedule(new TimerTask() {
+			@Override
+			public void run() {
+
+//				if(lastPlayedFrame <= frameBuffer.first().getSequenceNumber())
+//				{
+//					System.out.println(System.currentTimeMillis() - timeStart.getTime());
+//					System.out.println(frameBuffer.first().getTimestamp());
+//					System.out.println("------------------------");
+//					session.processReceivedFrame(frameBuffer.first());
+//					lastPlayedFrame = frameBuffer.first().getSequenceNumber();
+//					frameBuffer.remove(frameBuffer.first());
+//				}
+//				else frameBuffer.remove(frameBuffer.first());
+			}
+		}, 0, TARGET_FRAMERATE);
 	}
 
 	/**
@@ -190,10 +220,25 @@ public class RTSPConnection {
 			rtpSocket.receive(rtpPacket);
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
+
 			session.processReceivedFrame(frame);
+
+//			frameBuffer.add(frame);
+
+			if( frame.getSequenceNumber() - lastSequenceNo < 0 )
+				outOfOrderCount++;
+
+			lastSequenceNo = frame.getSequenceNumber(); 
+			frameCount++; 
+//			System.out.println("this packets time: " + (System.currentTimeMillis() - timeStart.getTime()));
+
 		} catch (SocketTimeoutException e) {
-			//TODO Possibly handle the end of the stream better 
-			this.closeConnection();
+			rtpTimer.cancel();
+			double secondsElapsed = (new Date().getTime() - timeStart.getTime()) / 1000.0;
+			double framesPerSec = frameCount / secondsElapsed;
+			double outOfOrderPerSec = outOfOrderCount / secondsElapsed; 
+			System.out.println("The frame count per a second is " + framesPerSec);
+			System.out.println("The out of order count per a second is " + outOfOrderPerSec);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -279,7 +324,6 @@ public class RTSPConnection {
 			rtpTimer.cancel();
 			rtpSocket.close();
 			tcpSocket.close();
-
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -305,10 +349,11 @@ public class RTSPConnection {
 		byte[] payload = Arrays.copyOfRange(packet, RTP_HEADER_LENGTH,
 				BUFFER_LENGTH);
 
-		System.out.println("Payload Type: " + payloadType);
-		System.out.println("Marker: " + marker);
-		System.out.println("Sequence No: " + sequenceNumber);
-		System.out.println("Timestamp: " + timestamp);
+//		System.out.println("Payload Type: " + payloadType);
+//		System.out.println("Marker: " + marker);
+//		System.out.println("Sequence No: " + sequenceNumber);
+//		System.out.println("Timestamp: " + timestamp);
+//		System.out.printf( "%d, %d, %d, %d \n", payloadType, (marker) ? 1 : 0 , sequenceNumber, timestamp);
 
 		return new Frame(payloadType, marker, sequenceNumber, timestamp,
 				payload);

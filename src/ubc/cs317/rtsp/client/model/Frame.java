@@ -19,7 +19,7 @@ import java.awt.Toolkit;
 /**
  * This class represents an individual frame in a video stream.
  */
-public class Frame {
+public class Frame implements Comparable<Frame> {
 
 	private byte payloadType;
 	private boolean marker;
@@ -155,5 +155,10 @@ public class Frame {
 	 */
 	public Image getImage() {
 		return Toolkit.getDefaultToolkit().createImage(getPayload());
+	}
+
+	@Override
+	public int compareTo(Frame o) {
+		return this.sequenceNumber - o.sequenceNumber;
 	}
 }
