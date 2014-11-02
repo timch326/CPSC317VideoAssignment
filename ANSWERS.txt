@@ -5,56 +5,79 @@ how it affects the video playback experience. Then explain what you believe is
 happening and what is causing the described behaviour.
 
 * FUNKY A
+Stuttering happens, possibly frames being dropped
 
 * FUNKY B
+Stuttering worse than A, frames being dropped
 
 * FUNKY C
+"Bouncing" happens, frames are arriving out of order
 
 * FUNKY D
+More bouncing and stuttering, frames are probably being dropped 
+and arriving out of order
 
 * FUNKY E
+Extremely fast playback, frames are arriving extremely quickly
 
 * FUNKY F
+Slow playback, frames are arriving slowly on connection
 
 * FUNKY G
+Stuttering and slow playback, frames are being dropped and packets
+arriving slowly
 
 * FUNKY H
+Video plays normally but pauses a few times, probably due to a 
+certain packet not being retrieved on time
 
 
 === Statistics ===
 
 You may add additional columns with more relevant data.
 
-FUNKY SERVER | FRAME RATE | PACKET LOSS RATE | OUT OF ORDER
-             | (pkts/sec) | (lost pkts/sec)  | (/sec)
--------------+------------+------------------+-------------
-     A       |            |                  |
-     B       |            |                  |
-     C       |            |                  |
-     D       |            |                  |
-     E       |            |                  |
-     F       |            |                  |
-     G       |            |                  |
-     H       |            |                  |
+| FUNKY SERVER | FRAME RATE | PACKET LOSS RATE | OUT OF ORDER |
+|              | (pkts/sec) | (lost pkts/sec)  | (/sec)       |
+|--------------+------------+------------------+--------------|
+| A            | 21.38      | 0.00             | 2.39         |
+| B            | 13.27      | 0.00             | 6.18         |
+| C            | 23.81      | 4.09             | 2.90         |
+| D            | 10.72      | 2.33             | 5.72         |
+| E            | 41.20      | 0.00             | 9.34         |
+| F            | 9.82       | 0.00             | 0.00         |
+| G            | 7.98       | 0.00             | 1.45         |
+| H            | 23.14      | 0.00             | 0.29         |
 
 
 === Result of analysis ===
+Used functioning PART B to explain, possibly use master branch?
 
 Explain in a few words what you believe is actually happening based on the statistics above.
 
 * FUNKY A
+Packets are arriving out of order but none are far behind enough to be dropped
 
 * FUNKY B
+Packets arrive slowly and out of order but not slow enough to be discarded
 
 * FUNKY C
+Packets are arriving timely but out of order and are eventually dropped to wait for
+the correct sequence.
 
 * FUNKY D
+Packets are arriving slowly and out of order, leading to them being dropped
 
 * FUNKY E
+Packets are arriving extremely fast and many are out of order, but this doesn't lead 
+to any packets being dropped
 
 * FUNKY F
+Packets are arriving half the rate of average time, but fast enough for waiting on them
+so they aren't dropped
 
 * FUNKY G
+Even slower than F with the packets being out of order, but again, not slow enough to 
+be dropped
 
 * FUNKY H
-
+Packets arrive timely but very infrequent out of order packets occur
