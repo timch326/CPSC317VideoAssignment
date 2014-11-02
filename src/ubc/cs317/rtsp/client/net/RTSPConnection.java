@@ -41,13 +41,18 @@ public class RTSPConnection {
 	private static final int RTP_HEADER_LENGTH = 12;
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
+	
+	private static final String STATE_INIT = "INIT";
+	private static final String STATE_READY = "READY";
+	private static final String STATE_PLAYING = "PLAYING";
 
 	private Session session;
 	private Timer rtpTimer;
 
-	private Socket tcpSocket;
+	private Socket tcpSocket; 
 	private DatagramSocket rtpSocket;
 	private int cSeq = 1;
+	private String state = STATE_INIT;
 
 	private BufferedWriter rtspWriter;
 	private BufferedReader rtspReader;
@@ -101,6 +106,11 @@ public class RTSPConnection {
 	 *             not return a successful response.
 	 */
 	public synchronized void setup(String videoName) throws RTSPException {
+		
+		if (state != STATE_INIT) {
+			throw new RTSPException("Close connection before opening a new video.");
+		}
+		
 		try {
 			rtpSocket = new DatagramSocket();
 			rtpSocket.setSoTimeout(RTP_TIMEOUT);
@@ -119,13 +129,12 @@ public class RTSPConnection {
 			checkSuccessfulResponse(setupResponse);
 			sessionNumber = setupResponse.getHeaderValue("Session");
 			cSeq++;
+			state = STATE_READY;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
 		}
 	}
-
-
 
 	/**
 	 * Sends a PLAY request to the server. This method is responsible for
@@ -138,6 +147,15 @@ public class RTSPConnection {
 	 *             if the server did not return a successful response.
 	 */
 	public synchronized void play() throws RTSPException {
+		
+		if (state == STATE_INIT) {
+			throw new RTSPException("Open a video first.");
+		}
+		
+		if (state == STATE_PLAYING) {
+			throw new RTSPException("A video is already playing.");
+		}
+		
 		try {
 
 			new RTSPRequest("PLAY", session.getVideoName())
@@ -152,6 +170,7 @@ public class RTSPConnection {
 			
 			cSeq++;
 			startRTPTimer();
+			state = STATE_PLAYING;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
@@ -190,9 +209,10 @@ public class RTSPConnection {
 			rtpSocket.receive(rtpPacket);
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
+			
+			
 			session.processReceivedFrame(frame);
 		} catch (SocketTimeoutException e) {
-			//TODO Possibly handle the end of the stream better 
 			rtpTimer.cancel();
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -211,6 +231,14 @@ public class RTSPConnection {
 	 *             if the server did not return a successful response.
 	 */
 	public synchronized void pause() throws RTSPException {
+		
+		if (state == STATE_INIT) {
+			throw new RTSPException("There is no video to pause.");
+		}
+		
+		if (state == STATE_READY) {
+			throw new RTSPException("The video is not playing.");
+		}
 
 		try {
 
@@ -225,6 +253,7 @@ public class RTSPConnection {
 			checkSuccessfulResponse(pauseResponse);
 			cSeq++;
 			rtpTimer.cancel();
+			state = STATE_READY;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
@@ -246,10 +275,12 @@ public class RTSPConnection {
 	 *             if the server did not return a successful response.
 	 */
 	public synchronized void teardown() throws RTSPException {
+		
+		if (state == STATE_INIT) {
+			throw new RTSPException("There is no video to teardown.");
+		}
 
 		try {
-
-
 			new RTSPRequest("TEARDOWN", session.getVideoName())
 				.setCSeq(cSeq)
 				.setSession(sessionNumber)
@@ -263,6 +294,8 @@ public class RTSPConnection {
 			rtpTimer.cancel();
 			rtpSocket.close();
 			cSeq++;
+			
+			state = STATE_INIT;
 
 		} catch (IOException e) {
 			throw new RTSPException("Could not get input/output stream", e);
