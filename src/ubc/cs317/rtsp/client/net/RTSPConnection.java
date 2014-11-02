@@ -43,7 +43,8 @@ public class RTSPConnection {
 	private static final int RTP_HEADER_LENGTH = 12;
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
-	private static final long TARGET_FRAMERATE = 20;
+	private static final long TARGET_FRAMERATE = 40;
+	private static final long MAXIMUM_WAIT_FOR_LOST_FRAME = 80;
 	
 	private static final String STATE_INIT = "INIT";
 	private static final String STATE_READY = "READY";
@@ -51,6 +52,7 @@ public class RTSPConnection {
 
 	private Session session;
 	private Timer rtpTimer;
+	private Timer videoTimer;
 
 	private Socket tcpSocket; 
 	private DatagramSocket rtpSocket;
@@ -65,7 +67,8 @@ public class RTSPConnection {
 	private long outOfOrderCount = 0; 
 	private int lastSequenceNo = 0;
 	
-	private int lastPlayedFrame = -1; 
+	private short lastPlayedFrameSeqNum = -1; 
+	private long lastPlayedFrameTimeStamp = -40; 
 	private String state = STATE_INIT;
 
 	private BufferedWriter rtspWriter;
@@ -184,8 +187,9 @@ public class RTSPConnection {
 			
 			cSeq++;
 			System.out.println("Payload Type,Marker,Sequence#,Timestamp\n");
-			timeStart = new Date();
 			startRTPTimer();
+			startVideoTimer();
+			timeStart = new Date();
 			state = STATE_PLAYING;
 
 		} catch (IOException e) {
@@ -206,21 +210,59 @@ public class RTSPConnection {
 				receiveRTPPacket();
 			}
 		}, 0, MINIMUM_DELAY_READ_PACKETS_MS);
-
-		rtpTimer.schedule(new TimerTask() {
+	}
+	
+	private void startVideoTimer()
+	{
+		videoTimer = new Timer();
+		videoTimer.scheduleAtFixedRate(new TimerTask() {
 			@Override
 			public void run() {
+				if(!frameBuffer.isEmpty()) {
 
-//				if(lastPlayedFrame <= frameBuffer.first().getSequenceNumber())
-//				{
-//					System.out.println(System.currentTimeMillis() - timeStart.getTime());
-//					System.out.println(frameBuffer.first().getTimestamp());
-//					System.out.println("------------------------");
-//					session.processReceivedFrame(frameBuffer.first());
-//					lastPlayedFrame = frameBuffer.first().getSequenceNumber();
-//					frameBuffer.remove(frameBuffer.first());
-//				}
-//				else frameBuffer.remove(frameBuffer.first());
+					short currentSeqNum = frameBuffer.first().getSequenceNumber();
+					long currentTimeStamp = frameBuffer.first().getTimestamp();
+					long timeElapsed = (System.currentTimeMillis() - timeStart.getTime());
+					long timeWaitDelta = timeElapsed - MAXIMUM_WAIT_FOR_LOST_FRAME;
+					
+					//TODO Refactor dirty code
+					//Never play any frame that is before the last played frame EVER
+					if ( lastPlayedFrameSeqNum > currentSeqNum )
+					{
+						frameBuffer.remove(frameBuffer.first());
+					}
+					//Else if the frame is the next in the sequence, play it
+					else if( lastPlayedFrameSeqNum + 1 == currentSeqNum )
+					{
+						System.out.printf("Time since starting %d\n", System.currentTimeMillis() - timeStart.getTime());
+						System.out.printf("Timestamp %d\n", frameBuffer.first().getTimestamp());
+						System.out.println("------------------------");
+
+						session.processReceivedFrame(frameBuffer.first());
+
+						lastPlayedFrameSeqNum = currentSeqNum;
+						lastPlayedFrameTimeStamp = currentTimeStamp;
+
+						frameBuffer.remove(frameBuffer.first()); 
+					}
+					//If it's not the next in sequence, but there is a frame between us, wait
+					else if( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp > timeWaitDelta ) {
+						return;
+					}
+					//We have waited too long and it's not a delta 1 away, just play the next frame
+					else if ( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp <= timeWaitDelta ) {
+						System.out.printf("Time since starting %d\n", System.currentTimeMillis() - timeStart.getTime());
+						System.out.printf("Timestamp %d\n", frameBuffer.first().getTimestamp());
+						System.out.println("------------------------");
+
+						session.processReceivedFrame(frameBuffer.first());
+
+						lastPlayedFrameSeqNum = currentSeqNum;
+						lastPlayedFrameTimeStamp = currentTimeStamp;
+
+						frameBuffer.remove(frameBuffer.first()); 
+					} 
+				}
 			}
 		}, 0, TARGET_FRAMERATE);
 	}
@@ -241,9 +283,7 @@ public class RTSPConnection {
 			rtpSocket.receive(rtpPacket);
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
-			session.processReceivedFrame(frame);
-
-//			frameBuffer.add(frame);
+			frameBuffer.add(frame);
 
 			if( frame.getSequenceNumber() - lastSequenceNo < 0 )
 				outOfOrderCount++;
@@ -337,6 +377,7 @@ public class RTSPConnection {
 			checkSuccessfulResponse(teardownResponse);
 			
 			rtpTimer.cancel();
+			videoTimer.cancel();
 			rtpSocket.close();
 			cSeq++;
 			
