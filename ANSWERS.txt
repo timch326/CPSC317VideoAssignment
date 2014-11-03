@@ -5,48 +5,45 @@ how it affects the video playback experience. Then explain what you believe is
 happening and what is causing the described behaviour.
 
 * FUNKY A
-Stuttering happens, possibly frames being dropped
+The video occasionally stutters, but it is not too perceptible to cause much discomfort in the viewing experience. Some frames might have been dropped, or there is some jitter.
 
 * FUNKY B
-Stuttering worse than A, frames being dropped
+The video stutters much more often than A. The issue is definitely perceptible and makes the video feel pretty choppy. Like A, frames are being dropped or there is some presence of jitter, but in a much higher degree.
 
 * FUNKY C
-"Bouncing" happens, frames are arriving out of order
+The video stutters and "bounces" around. The "bouncing" is frustrating and makes the video nearly unwatchable. Frames must be arriving out of order.
 
 * FUNKY D
-More bouncing and stuttering, frames are probably being dropped 
-and arriving out of order
+The video does more bore bouncing and stuttering, the video is too difficult to watch. Frames are probably being dropped and arriving out of order frequently.
 
 * FUNKY E
-Extremely fast playback, frames are arriving extremely quickly
+Extremely fast playback of the video. The video looks like it's being played twice as faster than normal. Frames are arriving extremely quickly to the client.
 
 * FUNKY F
-Slow playback, frames are arriving slowly on connection
+Slow playback of the video. This is the opposite as E, the video seems to be playing twice as slow. Frames are arriving slowly on connection.
 
 * FUNKY G
-Stuttering and slow playback, frames are being dropped and packets
-arriving slowly
+Stuttering and slowness is apparent in the video. The video is not watchable. Frames are likely being dropped and packets are arriving slowly to the client.
 
 * FUNKY H
-Video plays normally but pauses a few times, probably due to a 
-certain packet not being retrieved on time
+Video plays normally but pauses a few times. The video is watchable, but the pauses are annoying. This is probably due to some packets not being retrieved on time in the server to be sent to the client.
 
 
 === Statistics ===
 
 You may add additional columns with more relevant data.
 
-| FUNKY SERVER | FRAME RATE | PACKET LOSS RATE | OUT OF ORDER |
-|              | (pkts/sec) | (lost pkts/sec)  | (/sec)       |
-|--------------+------------+------------------+--------------|
-| A            | 21.38      | 0.00             | 2.39         |
-| B            | 13.27      | 0.00             | 6.18         |
-| C            | 23.81      | 4.09             | 2.90         |
-| D            | 10.72      | 2.33             | 5.72         |
-| E            | 41.20      | 0.00             | 9.34         |
-| F            | 9.82       | 0.00             | 0.00         |
-| G            | 7.98       | 0.00             | 1.45         |
-| H            | 23.14      | 0.00             | 0.29         |
+| FUNKY SERVER | FRAME RATE | PACKET LOSS RATE | OUT OF ORDER | JITTER     |
+|              | (pkts/sec) | (lost pkts/sec)  | (/sec)       | (millisec) |
+|--------------+------------+------------------+--------------|------------|
+| A            | 20.94      | 2.91             | 0.00         | 16.17      |
+| B            | 14.30      | 9.54             | 0.00         | 39.38	   |
+| C            | 23.68      | 0.00             | 4.07         | 22.83      |
+| D            | 11.83      | 11.83            | 2.27         | 63.98	   |
+| E            | 36.07      | 44.28            | 0.00         | 0.76       |
+| F            | 9.82       | 0.00             | 0.00         | 2.17       |
+| G            | 7.45       | 2.37             | 0.00         | 64.57      | 
+| H            | 22.61      | 1.24             | 0.00         | 58.25      |
 
 
 === Result of analysis ===
@@ -55,29 +52,25 @@ Used functioning PART B to explain, possibly use master branch?
 Explain in a few words what you believe is actually happening based on the statistics above.
 
 * FUNKY A
-Packets are arriving out of order but none are far behind enough to be dropped
+There is some minor jitter and dropped frames in the connection. The connection might be slightly congested.
 
 * FUNKY B
-Packets arrive slowly and out of order but not slow enough to be discarded
+Similar to A, but with more jitter and dropped frames in the connection. The connection is very congested.
 
 * FUNKY C
-Packets are arriving timely but out of order and are eventually dropped to wait for
-the correct sequence.
+Packets are arriving out of order but none of them were lost. There is some jitter as well. Packets may be travelling from different routes.
 
 * FUNKY D
-Packets are arriving slowly and out of order, leading to them being dropped
+Half of all packets are being dropped with a lot of jitter. Some of them are out of order as well. The connection might be over utilized and dropping many packets.
 
 * FUNKY E
-Packets are arriving extremely fast and many are out of order, but this doesn't lead 
-to any packets being dropped
+Packets are arriving at a very fast rate and half of them are being dropped, but jitter is neligible. The server might be specified to send the frames at the wrong rate.
 
 * FUNKY F
-Packets are arriving half the rate of average time, but fast enough for waiting on them
-so they aren't dropped
+Packets are arriving half the rate of average time but no packets are dropped. There is little jitter. The connection may have low bandwidth.
 
 * FUNKY G
-Even slower than F with the packets being out of order, but again, not slow enough to 
-be dropped
+The frames are arriving just as slowly as F, but some of them are dropped. The connection may have low bandwidth, and may be congested.
 
 * FUNKY H
-Packets arrive timely but very infrequent out of order packets occur
+Arriving packets ocassionally ocassionally pauses and then tries "catching up" by sending a higher rate of packets afterwards. The connection is suffering intermittent congestion, causing such jitter.
