@@ -64,6 +64,7 @@ public class RTSPConnection {
 	private long frameCount = 0; 
 	private long outOfOrderCount = 0; 
 	private int lastSequenceNo = 0;
+	private int droppedPacketCount = 0;
 	
 	private int lastPlayedFrame = -1; 
 	private String state = STATE_INIT;
@@ -206,23 +207,6 @@ public class RTSPConnection {
 				receiveRTPPacket();
 			}
 		}, 0, MINIMUM_DELAY_READ_PACKETS_MS);
-
-		rtpTimer.schedule(new TimerTask() {
-			@Override
-			public void run() {
-
-//				if(lastPlayedFrame <= frameBuffer.first().getSequenceNumber())
-//				{
-//					System.out.println(System.currentTimeMillis() - timeStart.getTime());
-//					System.out.println(frameBuffer.first().getTimestamp());
-//					System.out.println("------------------------");
-//					session.processReceivedFrame(frameBuffer.first());
-//					lastPlayedFrame = frameBuffer.first().getSequenceNumber();
-//					frameBuffer.remove(frameBuffer.first());
-//				}
-//				else frameBuffer.remove(frameBuffer.first());
-			}
-		}, 0, TARGET_FRAMERATE);
 	}
 
 	/**
@@ -243,22 +227,21 @@ public class RTSPConnection {
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
 			session.processReceivedFrame(frame);
 
-//			frameBuffer.add(frame);
-
 			if( frame.getSequenceNumber() - lastSequenceNo < 0 )
 				outOfOrderCount++;
+			else if(frame.getSequenceNumber() - lastSequenceNo > 0)
+				droppedPacketCount++; 
 
 			lastSequenceNo = frame.getSequenceNumber(); 
 			frameCount++; 
-//			System.out.println("this packets time: " + (System.currentTimeMillis() - timeStart.getTime()));
 
 		} catch (SocketTimeoutException e) {
 			rtpTimer.cancel();
 			double secondsElapsed = (new Date().getTime() - timeStart.getTime()) / 1000.0;
 			double framesPerSec = frameCount / secondsElapsed;
 			double outOfOrderPerSec = outOfOrderCount / secondsElapsed; 
-			System.out.println("The frame count per a second is " + framesPerSec);
-			System.out.println("The out of order count per a second is " + outOfOrderPerSec);
+			double droppedPerSec = droppedPacketCount / secondsElapsed; 
+			System.out.printf("|%.2f|%.2f|%.2f|" + framesPerSec, droppedPerSec, outOfOrderPerSec );
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
