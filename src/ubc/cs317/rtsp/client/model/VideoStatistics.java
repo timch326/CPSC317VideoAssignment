@@ -1,15 +1,18 @@
 package ubc.cs317.rtsp.client.model;
 
-import java.util.Date;
 
 
 public class VideoStatistics {
 	
+	private static String PAUSED = "paused";
+	private static String RUNNING = "running";
+	
+	private String state = PAUSED;
 	private long startTime;
-	private double timeElapsed = 0;		// seconds
+	private long cumulatedElapsedTime = 0;
 	private long frameCount = 0;
 	private long outOfOrderCount = 0; 
-	private int lastSequenceNo = 0;
+	private short lastSequenceNo = 0;
 	
 	private double averageDelay = 0;
 	private double jitterVariance = 0;
@@ -20,52 +23,71 @@ public class VideoStatistics {
 	}
 	
 	public void startLogging() {
-		this.startTime = new Date().getTime();
-		lastFrameReceivedTime = startTime;
+		if (state.equals(PAUSED)) {
+			startTime = System.currentTimeMillis();
+			lastFrameReceivedTime = startTime;
+			state = RUNNING;
+		}
 	}
 	
 	public void pauseLogging() {
-		long currentTime = new Date().getTime();
-		timeElapsed += (currentTime - startTime) / 1000.0;
+		if (state.equals(RUNNING)) {
+			cumulatedElapsedTime += System.currentTimeMillis() - startTime;
+			state = PAUSED;
+		}
+	}
+	
+	public long getTimeElapsed() {
+		if (state.equals(PAUSED)) {
+			return cumulatedElapsedTime;
+		} else {
+			return (System.currentTimeMillis() - startTime) + cumulatedElapsedTime;
+		}
 	}
 	
 	public void logFrame(Frame frame) {
-		long timeReceivedFrame = new Date().getTime(); 
+		long timeReceivedFrame = System.currentTimeMillis();
 		long timeSinceLastFrame = timeReceivedFrame - lastFrameReceivedTime;
 		
-		// System.out.println("Time Between Last Frame: " + timeSinceLastFrame);
+		System.out.println("Time Between Last Frame: " + timeSinceLastFrame);
 		
 		if (frameCount > 0) {
 			averageDelay = (averageDelay * (frameCount - 1) + timeSinceLastFrame) / frameCount;
 			jitterVariance = (jitterVariance * (frameCount - 1) + Math.pow((averageDelay - timeSinceLastFrame), 2)) / frameCount;
 		}
-			
-		
-		lastFrameReceivedTime = timeReceivedFrame;
-		
 		frameCount++;
-		
 		if (frame.getSequenceNumber() < lastSequenceNo)
 			outOfOrderCount++;
-
+		
+		lastFrameReceivedTime = timeReceivedFrame;
 		lastSequenceNo = frame.getSequenceNumber(); 
 	}
 	
-
-	
 	public void printStatistics() {
-		double framesPerSec = frameCount / timeElapsed;
-		double outOfOrderPerSec = outOfOrderCount / timeElapsed; 
-		double lostFramesPerSec = (lastSequenceNo - frameCount + 1) / timeElapsed; 
+		double timeElapsedSec = getTimeElapsed() / 1000.0;
+		
+		double framesPerSec = frameCount / timeElapsedSec;
+		double outOfOrderPerSec = outOfOrderCount / timeElapsedSec; 
+		double lostFramesPerSec = (lastSequenceNo - frameCount + 1) / timeElapsedSec; 
 		
 		System.out.println("The frame count per second is " + framesPerSec);
 		System.out.println("The out of order count per second is " + outOfOrderPerSec);
 		System.out.println("The lost packets per second is " + lostFramesPerSec);
-		System.out.println("The time to play the video is " + timeElapsed);
+		System.out.println("The time to play the video is " + timeElapsedSec);
 		System.out.println("The number of frames received to play the video is " + frameCount);
 		System.out.println("The average time between frames is " + averageDelay);
 		System.out.println("The average amount of jitter is " + Math.pow(jitterVariance, 0.5));
+	}
 
+	public double getExpectedDelayPerPacket() {
+		return averageDelay;
+	}
+
+	public double getJitter() {
+		return Math.pow(jitterVariance, 0.5);
 	}
 	
+	public short getLastSequenceNumber() {
+		return lastSequenceNo;
+	}
 }

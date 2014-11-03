@@ -25,14 +25,13 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.TreeSet;
 
 import ubc.cs317.rtsp.client.exception.RTSPException;
 import ubc.cs317.rtsp.client.model.Frame;
 import ubc.cs317.rtsp.client.model.Session;
+import ubc.cs317.rtsp.client.model.VideoBuffer;
 import ubc.cs317.rtsp.client.model.VideoStatistics;
 
 /**
@@ -45,7 +44,7 @@ public class RTSPConnection {
 	private static final int BUFFER_LENGTH = 15000;
 	private static final long MINIMUM_DELAY_READ_PACKETS_MS = 20;
 	private static final long TARGET_FRAMERATE = 40;
-	private static final long MAXIMUM_WAIT_FOR_LOST_FRAME = 80;
+	private static final int INITIAL_BUFFER_TIME = 1000;
 	
 	private static final String STATE_INIT = "INIT";
 	private static final String STATE_READY = "READY";
@@ -59,13 +58,10 @@ public class RTSPConnection {
 	private DatagramSocket rtpSocket;
 	private int cSeq = 1;
 	
-	private int BUFFER_SIZE; 
-	private TreeSet<Frame> frameBuffer = new TreeSet<Frame>(); 
+	private VideoBuffer videoBuffer;
 	
 	private VideoStatistics statistics;
-	private Date timeStart; 	
 	private short lastPlayedFrameSeqNum = -1; 
-	private long lastPlayedFrameTimeStamp = -40; 
 
 	private String state = STATE_INIT;
 
@@ -144,6 +140,7 @@ public class RTSPConnection {
 			checkSuccessfulResponse(setupResponse);
 			sessionNumber = setupResponse.getHeaderValue("Session");
 			cSeq++;
+			videoBuffer = new VideoBuffer();
 			statistics = new VideoStatistics();
 			state = STATE_READY;
 
@@ -211,37 +208,33 @@ public class RTSPConnection {
 	private void startVideoTimer()
 	{
 		videoTimer = new Timer();
-		videoTimer.scheduleAtFixedRate(new TimerTask() {
+		videoTimer.schedule(new TimerTask() {
 			@Override
-			public void run() {
-				if(!frameBuffer.isEmpty()) {
+			public synchronized void run() {
+				if (!videoBuffer.isEmpty()) {
 					
-					short currentSeqNum = frameBuffer.first().getSequenceNumber();
-					long currentTimeStamp = frameBuffer.first().getTimestamp();
-					long timeElapsed = (System.currentTimeMillis() - timeStart.getTime());
-					long timeWaitDelta = timeElapsed - MAXIMUM_WAIT_FOR_LOST_FRAME;
+					short currentSeqNum = videoBuffer.peekSequenceNo();
 					
-					//Never play any frame that is before the last played frame EVER
-					if ( lastPlayedFrameSeqNum > currentSeqNum )
-					{
-						frameBuffer.remove(frameBuffer.first());
+					if (lastPlayedFrameSeqNum + 1 == currentSeqNum) {
+						session.processReceivedFrame(videoBuffer.pop());
+						lastPlayedFrameSeqNum++;
+					} else {
+						System.out.println("Skipped frame " + (lastPlayedFrameSeqNum + 1));
+						lastPlayedFrameSeqNum++;
 					}
-					//Else if the frame is the next in the sequence, play it
-					else if( lastPlayedFrameSeqNum + 1 == currentSeqNum )
-					{
-						playFrame(currentSeqNum, currentTimeStamp); 
+					
+				} else {
+					try {
+						long bufferTime = (long) (statistics.getExpectedDelayPerPacket() * 100);
+						System.out.println("Buffering for " + bufferTime);
+						this.wait(bufferTime);
+					} catch (InterruptedException e) {
+						e.printStackTrace();
 					}
-					//If it's not the next in sequence, but there is a frame between us, wait
-					else if( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp > timeWaitDelta ) {
-						return;
-					}
-					//We have waited too long and the next sequence is greater by one, just play the next frame
-					else if ( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp <= timeWaitDelta ) {
-						playFrame(currentSeqNum, currentTimeStamp); 
-					} 
 				}
+				
 			}
-		}, 0, TARGET_FRAMERATE);
+		}, INITIAL_BUFFER_TIME, TARGET_FRAMERATE);
 	}
 
 	/**
@@ -262,10 +255,10 @@ public class RTSPConnection {
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
 			statistics.logFrame(frame);
 
-			frameBuffer.add(frame);
+			videoBuffer.add(frame);
 			
 		} catch (SocketTimeoutException e) {
-			stopPlayingFrames();
+			rtpTimer.cancel();
 			statistics.printStatistics();
 			
 		} catch (IOException e) {
@@ -365,8 +358,12 @@ public class RTSPConnection {
 	public synchronized void closeConnection() {
 		try {
 			stopPlayingFrames();
-			rtpSocket.close();
-			tcpSocket.close();
+			if (rtpSocket != null) {
+				rtpSocket.close();
+			}
+			if (tcpSocket != null) {
+				tcpSocket.close();
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -394,30 +391,25 @@ public class RTSPConnection {
 
 		return new Frame(payloadType, marker, sequenceNumber, timestamp,
 				payload);
-
 	}
 	
 	private void startPlayingFrames() {
 		startRTPTimer();
 		startVideoTimer();
-		timeStart = new Date();
 		statistics.startLogging();
 	}
 	
 	private void stopPlayingFrames() {
 		if (rtpTimer != null) {
 			rtpTimer.cancel();
-
 		}
 		if (videoTimer != null) {
 			videoTimer.cancel();
 		}
-		if (frameBuffer != null) {
-			frameBuffer.clear();
-		}
 		if (statistics != null) {
 			statistics.pauseLogging();
 		}
+		lastPlayedFrameSeqNum = -1;
 	}
 	
 	private void checkSuccessfulResponse(RTSPResponse response)
@@ -430,18 +422,5 @@ public class RTSPConnection {
 					"Server did not return a successful response, got: "
 							+ response.getResponseCode());
 		}
-	}
-
-	private void playFrame(short currentSeqNum, long currentTimeStamp) {
-		System.out.printf("Time since starting %d\n", System.currentTimeMillis() - timeStart.getTime());
-		System.out.printf("Timestamp %d\n", frameBuffer.first().getTimestamp());
-		System.out.println("------------------------");
-
-		session.processReceivedFrame(frameBuffer.first());
-
-		lastPlayedFrameSeqNum = currentSeqNum;
-		lastPlayedFrameTimeStamp = currentTimeStamp;
-
-		frameBuffer.remove(frameBuffer.first());
 	}
 }

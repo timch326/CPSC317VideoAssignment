@@ -14,7 +14,7 @@ The video stutters much more often than A. The issue is definitely perceptible a
 The video stutters and "bounces" around. The "bouncing" is frustrating and makes the video nearly unwatchable. Frames must be arriving out of order.
 
 * FUNKY D
-The video does more bore bouncing and stuttering, the video is too difficult to watch. Frames are probably being dropped and arriving out of order frequently.
+The video does more bouncing and stuttering, the video is too difficult to watch. Frames are probably being dropped and arriving out of order frequently.
 
 * FUNKY E
 Extremely fast playback of the video. The video looks like it's being played twice as faster than normal. Frames are arriving extremely quickly to the client.
