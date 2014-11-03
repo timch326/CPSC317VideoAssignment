@@ -215,7 +215,7 @@ public class RTSPConnection {
 			@Override
 			public void run() {
 				if(!frameBuffer.isEmpty()) {
-
+					
 					short currentSeqNum = frameBuffer.first().getSequenceNumber();
 					long currentTimeStamp = frameBuffer.first().getTimestamp();
 					long timeElapsed = (System.currentTimeMillis() - timeStart.getTime());
@@ -238,7 +238,6 @@ public class RTSPConnection {
 					//We have waited too long and the next sequence is greater by one, just play the next frame
 					else if ( lastPlayedFrameSeqNum + 1 != currentSeqNum && lastPlayedFrameTimeStamp <= timeWaitDelta ) {
 						playFrame(currentSeqNum, currentTimeStamp); 
-						statistics.logLostFrame();
 					} 
 				}
 			}
@@ -261,9 +260,9 @@ public class RTSPConnection {
 			rtpSocket.receive(rtpPacket);
 			byte[] rtpHeaderData = rtpPacket.getData();
 			Frame frame = parseRTPPacket(rtpHeaderData, BUFFER_LENGTH);
-			frameBuffer.add(frame);
-			
 			statistics.logFrame(frame);
+
+			frameBuffer.add(frame);
 			
 		} catch (SocketTimeoutException e) {
 			stopPlayingFrames();
@@ -406,10 +405,19 @@ public class RTSPConnection {
 	}
 	
 	private void stopPlayingFrames() {
-		rtpTimer.cancel();
-		videoTimer.cancel();
-		frameBuffer.clear();
-		statistics.pauseLogging();
+		if (rtpTimer != null) {
+			rtpTimer.cancel();
+
+		}
+		if (videoTimer != null) {
+			videoTimer.cancel();
+		}
+		if (frameBuffer != null) {
+			frameBuffer.clear();
+		}
+		if (statistics != null) {
+			statistics.pauseLogging();
+		}
 	}
 	
 	private void checkSuccessfulResponse(RTSPResponse response)
